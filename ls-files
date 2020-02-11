@@ -50,17 +50,17 @@ do
 			exit 1
 			;;
 	esac
-	mode=$((mode & 0x1FF))
-	if [ $mode -ne $((0644)) ] && [ $mode -ne $((0755)) ] && [ $mode -ne 0 ]
+	unixmode=$((mode & 0x1FF))
+	if [ $unixmode -ne $((0644)) ] && [ $unixmode -ne $((0755)) ] && [ $unixmode -ne 0 ]
 	then
-		printf "Invalid file mode %o\n" $mode >&2
+		printf "Invalid file mode %o\n" $unixmode >&2
 		exit 1
 	fi
 
 	pathlen=$((flags & 0xFFF))
 	path="$(read_text "$index" $((offs+62)) $pathlen)"
 
-	printf "%s %o %s %s\n" "$objtype" "$mode" "$sha" "$path"
+	printf "%o %s %s\n" "$mode" "$sha" "$path"
 
 	padding=$((${#path} + 1 + 62))
 	padding=$((padding % 8))

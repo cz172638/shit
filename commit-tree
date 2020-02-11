@@ -11,7 +11,7 @@ while getopts p: opt
 do
 	case $opt in
 		p)
-			parents="$(printf "$s" "$parents" | tr -s , ' ')"
+			parents="$(printf "%s" "$OPTARG" | tr -s , ' ')"
 			;;
 		?)
 			printf "Usage: %s [-p <parents...>]\n" "$0" >&2
