@@ -1,0 +1,23 @@
+#!/bin/sh -eu
+SHIT_PATH=$(dirname "$0")
+. $SHIT_PATH/common.sh
+
+"$SHIT_PATH"/ls-files | while read -r type mode sha path
+do
+	case $type in
+		file)
+			mode=100$mode
+			;;
+		link)
+			mode=012$mode
+			;;
+		gitlink)
+			printf "submodules are unimplemented\n" >&2
+			exit 1
+			;;
+	esac
+	# TODO: subtrees
+	objtype=blob
+	printf "%s %s\0" $mode "$path"
+	write_hex "$sha"
+done

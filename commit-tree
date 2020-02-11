@@ -1,0 +1,52 @@
+#!/bin/sh -eu
+SHIT_PATH=$(dirname "$0")
+. $SHIT_PATH/common.sh
+
+tree="$1"
+shift
+
+parents=
+
+while getopts p: opt
+do
+	case $opt in
+		p)
+			parents="$(printf "$s" "$parents" | tr -s , ' ')"
+			;;
+		?)
+			printf "Usage: %s [-p <parents...>]\n" "$0" >&2
+			exit 1
+			;;
+	esac
+done
+
+# TODO: Read from git config
+if [ -z "$GIT_AUTHOR_NAME" ]
+then
+	printf "GIT_AUTHOR_NAME unset\n"
+	exit 1
+fi
+if [ -z "$GIT_AUTHOR_EMAIL" ]
+then
+	printf "GIT_AUTHOR_EMAIL unset\n"
+	exit 1
+fi
+GIT_COMMITTER_NAME=${GIT_COMMITTER_NAME:-$GIT_AUTHOR_NAME}
+GIT_COMMITTER_EMAIL=${GIT_COMMITTER_EMAIL:-$GIT_AUTHOR_EMAIL}
+# XXX: GNUism
+GIT_AUTHOR_DATE=${GIT_AUTHOR_DATE:-$(date +'%s %z')}
+GIT_COMMITTER_DATE=${GIT_COMMITTER_DATE:-$(date +'%s %z')}
+
+printf "tree %s\n" "$tree"
+for parent in $parents
+do
+	printf "parent %s\n" "$parent"
+done
+printf "author %s <%s> %s\n" \
+	"$GIT_AUTHOR_NAME" "$GIT_AUTHOR_EMAIL" "$GIT_AUTHOR_DATE"
+printf "committer %s <%s> %s\n" \
+	"$GIT_COMMITTER_NAME" "$GIT_COMMITTER_EMAIL" "$GIT_COMMITTER_DATE"
+printf "\n"
+
+printf 'Enter your comment message:\n' >&2
+cat

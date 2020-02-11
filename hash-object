@@ -1,0 +1,77 @@
+#!/bin/sh -eu
+SHIT_PATH=$(dirname "$0")
+. $SHIT_PATH/common.sh
+
+header() (
+	objtype="$1"
+	case "$objtype" in
+		blob|tree|commit)
+			len="$2"
+			printf '%s %d\u0000' "$objtype" "$len"
+			;;
+		*)
+			printf 'Unknown object type %s\n' "$1" >&2
+			exit 1
+			;;
+	esac
+)
+
+write_object() (
+	object_type="$1"
+	path="$2"
+	len=$(wc -c "$path" | cut -d' ' -f1)
+	header "$object_type" "$len"
+	cat "$path"
+)
+
+object_type=blob
+write=0
+
+while getopts t:w opt
+do
+	case $opt in
+		t)
+			object_type="$OPTARG"
+			;;
+		w)
+			write=1
+			;;
+		?)
+			printf "Usage: %s [-t <type>] [-w] <files...>\n" "$0" >&2
+			exit 1
+			;;
+	esac
+done
+
+shift $((OPTIND-1))
+
+process() {
+	path="$1"
+	if [ $write -eq 1 ]
+	then
+		sha=$(write_object "$object_type" "$path" | sha1sum | cut -d' ' -f1)
+		prefix=$(printf "%s" "$sha" | cut -c1-2)
+		suffix=$(printf "%s" "$sha" | cut -c3-)
+		mkdir -p "$GIT_DIR"/objects/"$prefix"
+		if ! [ -e "$GIT_DIR"/objects/"$prefix"/"$suffix" ]
+		then
+			write_object "$object_type" "$path" | "$SHIT_PATH"/zlib \
+				>"$GIT_DIR"/objects/"$prefix"/"$suffix"
+		fi
+	else
+		sha=$(write_object "$object_type" "$path" | sha1sum | cut -d' ' -f1)
+	fi
+	printf '%s\n' "$sha"
+}
+
+for path in "$@"
+do
+	process "$path"
+done
+
+if [ $# -eq 0 ]
+then
+	tee > "$GIT_DIR"/objects/NEW_OBJECT
+	trap "rm '$GIT_DIR/objects/NEW_OBJECT'" EXIT
+	process "$GIT_DIR"/objects/NEW_OBJECT
+fi

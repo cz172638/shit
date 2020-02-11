@@ -1,0 +1,21 @@
+#!/bin/sh -eu
+SHIT_PATH=$(dirname "$0")
+. $SHIT_PATH/common.sh
+
+for dir in branches info objects/info objects/pack refs/heads refs/tags
+do
+	mkdir -p "$GIT_DIR"/$dir
+done
+
+cat <<EOF >"$GIT_DIR"/config
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+EOF
+
+echo "Unnamed repository; edit this file 'description' to name the repository." \
+	>"$GIT_DIR"/description
+
+echo "ref: refs/heads/master" >"$GIT_DIR"/HEAD

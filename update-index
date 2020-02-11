@@ -1,0 +1,123 @@
+#!/bin/sh -eu
+SHIT_PATH=$(dirname "$0")
+. $SHIT_PATH/common.sh
+
+write_index_header() (
+	nentries="$1"
+	printf 'DIRC'
+	write_int32 $INDEX_VERSION
+	write_int32 $nentries
+	# TODO: Extensions would go here if we cared
+)
+
+write_index_file() (
+	path="$(normalize_path "$1")"
+	stat=$(stat -c "%W %Y %d %i %u %g %s" "$path") # XXX: GNUism
+	ctime=$(printf "%s" "$stat" | cut -d' ' -f1)
+	mtime=$(printf "%s" "$stat" | cut -d' ' -f2)
+	dev=$(printf "%s" "$stat" | cut -d' ' -f3)
+	inode=$(printf "%s" "$stat" | cut -d' ' -f4)
+	uid=$(printf "%s" "$stat" | cut -d' ' -f5)
+	gid=$(printf "%s" "$stat" | cut -d' ' -f6)
+	size=$(printf "%s" "$stat" | cut -d' ' -f7)
+
+	write_int32 "$ctime"
+	write_int32 0 # nanoseconds
+	write_int32 "$mtime"
+	write_int32 0 # nanoseconds
+	write_int32 "$dev"
+	write_int32 "$inode"
+	# object type & mode
+	if [ -x "$path" ]
+	then
+		write_int32 $((0x8000 | 0755))
+	else
+		write_int32 $((0x8000 | 0644))
+	fi
+	write_int32 "$uid"
+	write_int32 "$gid"
+	write_int32 "$size"
+	sha=$("$SHIT_PATH"/hash-object -w "$path")
+	write_hex "$sha"
+	# XXX: If file name length is >0xFFF this is wrong
+	write_int16 "${#path}"
+	printf '%s\0' "$path"
+	padding=$((${#path} + 1 + 62))
+	padding=$((padding % 8))
+	padding=$(((8 - padding) % 8))
+	while [ $padding -gt 0 ]
+	do
+		printf '\0'
+		padding=$((padding-1))
+	done
+)
+
+write_index_link() (
+	printf '%s' "Symlinks are not implemented\n" >&2
+	exit 1
+)
+
+do_add=0
+do_remove=0
+force_remove=0
+
+while [ $# -ne 0 ]
+do
+	case "$1" in
+		--add)
+			do_add=1
+			;;
+		--remove)
+			do_remove=1
+			;;
+		--force-remove)
+			do_remove=1
+			force_remove=1
+			;;
+		*)
+			break
+			;;
+	esac
+	shift
+done
+
+# TODO: Update existing index
+
+cleanup_old_index() {
+	if [ $? -eq 0 ]
+	then
+		rm "$GIT_DIR"/index.old
+	else
+		# Restore old index on error
+		mv "$GIT_DIR"/index.old "$GIT_DIR"/index
+	fi
+}
+
+if [ -f "$GIT_DIR"/index ]
+then
+	mv "$GIT_DIR"/index "$GIT_DIR"/index.old
+	trap cleanup_old_index EXIT
+fi
+
+# TODO: Write out to >>"$GIT_DIR"/index
+write_index_header "$#" >>"$GIT_DIR"/index
+
+for path in "$@"
+do
+	printf "%s\n" "$path"
+done | gitsort | while read -r path
+do
+	if [ -f "$path" ]
+	then
+		write_index_file "$path" >>"$GIT_DIR"/index
+	elif [ -L "$path" ]
+	then
+		write_index_link "$path" >>"$GIT_DIR"/index
+	else
+		printf "Invalid path for indexing: %s\n" "$path" >&2
+		exit 1
+	fi
+done
+
+sha=$(sha1sum "$GIT_DIR"/index | cut -d' ' -f1)
+write_hex "$sha" >>"$GIT_DIR"/index

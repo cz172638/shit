@@ -1,0 +1,71 @@
+#!/bin/sh -eu
+SHIT_PATH=$(dirname "$0")
+. $SHIT_PATH/common.sh
+
+index="$GIT_DIR"/index
+
+magic=$(od -An -tc -N4 "$index" | tr -d ' ')
+version=$(read_int32 "$index" 4)
+nentries=$(read_int32 "$index" 8)
+
+if [ "$magic" != "DIRC" ]
+then
+	printf "Invalid git index format\n" >&2
+	exit
+fi
+
+if [ $version -ne 2 ]
+then
+	printf "Only git index version %d is supported, %d was found\n" \
+		"$INDEX_VERSION" "$version" >&2
+	exit 1
+fi
+
+offs=12
+while [ $nentries -gt 0 ]
+do
+	# mode  @ 24 bytes
+	# sha   @ 40 bytes
+	# flags @ 60 bytes
+	# name  @ 62 bytes
+	mode=$(read_int32 "$index" $((offs+24)))
+	sha=$(read_hex "$index" $((offs+40)) 20)
+	flags=$(read_int16 "$index" $((offs+60)))
+
+	# 0bNNNNxxxMMMMMMMMM
+	# NNNN -> object type
+	# MMMMMMMMM -> unix file mode (644 or 755)
+	case $(printf "%X" $((mode & 0xF000))) in
+		8000)
+			objtype=file
+			;;
+		A000)
+			objtype=link
+			;;
+		E000)
+			objtype=gitlink
+			;;
+		*)
+			printf "Invalid object type %x\n" $(((mode & 0xF000) >> 12)) >&2
+			exit 1
+			;;
+	esac
+	mode=$((mode & 0x1FF))
+	if [ $mode -ne $((0644)) ] && [ $mode -ne $((0755)) ] && [ $mode -ne 0 ]
+	then
+		printf "Invalid file mode %o\n" $mode >&2
+		exit 1
+	fi
+
+	pathlen=$((flags & 0xFFF))
+	path="$(read_text "$index" $((offs+62)) $pathlen)"
+
+	printf "%s %o %s %s\n" "$objtype" "$mode" "$sha" "$path"
+
+	padding=$((${#path} + 1 + 62))
+	padding=$((padding % 8))
+	padding=$(((8 - padding) % 8))
+	offs=$((offs+62+${#path}+1+padding))
+
+	nentries=$((nentries-1))
+done
