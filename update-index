@@ -99,7 +99,6 @@ then
 	trap cleanup_old_index EXIT
 fi
 
-# TODO: Write out to >>"$GIT_DIR"/index
 write_index_header "$#" >>"$GIT_DIR"/index
 
 for path in "$@"
